@@ -79,11 +79,11 @@ namespace Cache {
 			unique_lock<shared_mutex> lock(m_cacheMutex);
 
 			if (data.empty()) {
-				clog << "empty IP, invalidating entry for " << name << endl;
+				//clog << "empty IP, invalidating entry for " << name << endl;
 				removeEntry(name);
 			}
 			else {
-				clog << "updating " << name << " to " << data << endl;
+				//clog << "updating " << name << " to " << data << endl;
 
 				const auto& entry(updateCache(m_root, name, 0, data));
 
@@ -97,13 +97,13 @@ namespace Cache {
 				updateLinkedListOnAccess(entry);
 
 				if (m_currentSize > m_maxSize) {
-					dump();
-					clog << "max size reached, removing tail" << endl;
+					//dump();
+					//clog << "max size reached, removing tail" << endl;
 					removeEntry(m_tail);
 				}
 			}
 
-			dump();
+			//dump();
 		}
 		catch (const exception& e) {
 			cerr << "failed to update " << name << " to " << data << ": " << e.what() << endl;
@@ -267,7 +267,7 @@ namespace Cache {
 			if (entry->hasData()) {
 				lock_guard<mutex> lock(m_llMutex);
 				updateLinkedListOnAccess(entry);
-				dumpLinkedList();
+				//dumpLinkedList();
 			}
 			return entry->m_data;
 		}

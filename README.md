@@ -89,4 +89,6 @@ TODO
  * finish TODOs in code :)
  * compare to other implementations (LinkedHashMap - boost multi_index,
 tbb concurrent hash map, junction ...)
+ * enhance makefile for linux build
+ * enhance logging
  
