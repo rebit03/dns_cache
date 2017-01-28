@@ -9,7 +9,7 @@ namespace Cache {
 
 		extern const size_t DNS_CACHE_SIZE;
 
-		CCache& getDNSCache() {
+		ICache& getDNSCache() {
 			static CCache dnsCache(DNS_CACHE_SIZE);
 			return dnsCache;
 		}
