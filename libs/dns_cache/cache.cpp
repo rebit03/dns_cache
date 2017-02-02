@@ -1,6 +1,5 @@
 #include "cache.h"
 
-#include <algorithm>
 #include <iostream>
 #include <iomanip>
 #include <exception>
@@ -14,12 +13,12 @@ namespace Cache {
 
 	namespace {
 
-		const size_t NUMBERS_INDEX = 26;
-		const size_t SPECIAL_INDEX = 36;
+		const uint32_t NUMBERS_INDEX = 26;
+		const uint32_t SPECIAL_INDEX = 36;
 
-		size_t getIndex(const char& ch) noexcept
+		uint32_t getIndex(const char& ch) noexcept
 		{
-			size_t index = ch;
+			uint32_t index = ch;
 			if (index >= 'a') {
 				index -= 'a';
 			}
@@ -32,7 +31,7 @@ namespace Cache {
 			return index;
 		}
 
-		char getChar(size_t index) noexcept
+		char getChar(uint32_t index) noexcept
 		{
 			if (index < NUMBERS_INDEX) {
 				index += 'a';
@@ -46,16 +45,19 @@ namespace Cache {
 			return static_cast<char>(index);
 		}
 
-		size_t min(size_t l, size_t r) noexcept
+		uint32_t min(uint32_t l, uint32_t r) noexcept
 		{
 			return l > r ? r : l;
 		}
 
-		string commonPrefix(const string& l, const string& r)
+		uint32_t commonPrefixLen(const string& l, const string& r, uint32_t lPos = 0)
 		{
-			auto len(min(l.size(), r.size()));
-			auto diff(move(mismatch(l.begin(), l.begin() + len, r.begin())));
-			return string(l.begin(), diff.first);
+			auto len(min(static_cast<uint32_t>(l.size()) - lPos, static_cast<uint32_t>(r.size())));
+			uint32_t i{ 0 };
+			while (i < len && l.at(i + lPos) == r.at(i)) {
+				i++;
+			}
+			return i;
 		}
 
 	}
@@ -110,36 +112,36 @@ namespace Cache {
 		}
 	}
 
-	CCache::CEntryPtr& CCache::updateCache(CEntryPtr& entry, const string& name, size_t position, const string& data)
+	CCache::CEntryPtr& CCache::updateCache(CEntryPtr& entry, const string& name, uint32_t position, const string& data)
 	{
 		try {
 			if (entry->hasProxyValue()) {
-				auto prefix(move(commonPrefix(name.substr(position), entry->m_proxyValue)));
+				auto prefixLen(commonPrefixLen(name, entry->m_proxyValue, position));
 
-				if (prefix.empty())
+				if (prefixLen == 0)
 				{	// 1. there is already some partial string, but no common prefix with current name -> split entry
-					return splitEntry(entry, name, position, data, prefix);
+					return splitEntry(entry, name, position, data);
 				}
 
 				auto nameLen((name.size() - position)); // lenght of the name from current position
 
-				if (prefix.size() == entry->m_proxyValue.size())
+				if (prefixLen == entry->m_proxyValue.size())
 				{	// current partial string matches the common name prefix
-					if (prefix.size() == nameLen)
+					if (prefixLen == nameLen)
 					{	// 2. matched the whole name -> actualize data
 						entry->setData(data);
 						return entry;
 					}
-					else // prefix.size() < nameLen
+					else // prefixLen < nameLen
 					{	// 3. -> shift position by common prefix and insert the rest of the name
-						position += prefix.size();
+						position += prefixLen;
 						return insertChild(entry, name, position, data);
 					}
 				}
-				else // prefix.size() < entry->m_proxyValue.size()
+				else // prefixLen < entry->m_proxyValue.size()
 				{	// 4. common prefix with current proxy value are not matching -> shift position by common prefix and split entry
-					position += prefix.size();
-					return splitEntry(entry, name, position, data, prefix);
+					position += prefixLen;
+					return splitEntry(entry, name, position, data, prefixLen);
 				}
 			}
 			else if (!(entry->hasData() || entry->hasChildren())) {
@@ -166,7 +168,7 @@ namespace Cache {
 		}
 	}
 
-	CCache::CEntryPtr& CCache::insertChild(const CEntryPtr& entry, const string& name, size_t position, const string& data)
+	CCache::CEntryPtr& CCache::insertChild(const CEntryPtr& entry, const string& name, uint32_t position, const string& data)
 	{
 		auto index(getIndex(name.at(position)));
 		auto& child(entry->m_children[index]);
@@ -179,7 +181,7 @@ namespace Cache {
 				entry->m_childrenCount++;
 			}
 
-			auto nameLen((name.size() - position)); // lenght of the name from current position
+			auto nameLen(static_cast<uint32_t>(name.size() - position)); // lenght of the name from current position
 			if (nameLen == 0 && !child->hasProxyValue())
 			{	// last letter was indexed already and no partial string here, it's a match -> actualize data
 				child->setData(data);
@@ -201,7 +203,7 @@ namespace Cache {
 		}
 	}
 
-	CCache::CEntryPtr& CCache::splitEntry(CEntryPtr& entry, const string& name, size_t position, const string& data, const string& prefix)
+	CCache::CEntryPtr& CCache::splitEntry(CEntryPtr& entry, const string& name, uint32_t position, const string& data, uint32_t prefixLen/* = 0*/)
 	{
 		try {
 			// create new entry with common prefix
@@ -211,18 +213,18 @@ namespace Cache {
 			{	// last letter already indexed, it's a match -> set data
 				newEntry->setData(data);
 			}
-			newEntry->setProxyValue(prefix);
+			newEntry->setProxyValue(name, position - prefixLen, prefixLen);
 
 			auto originalProxyValue(move(entry->m_proxyValue));
 			// set rest of the proxy value after common prefix (minus index letter) to original entry
-			entry->setProxyValue(move(originalProxyValue.substr(prefix.size() + 1)));
+			entry->setProxyValue(originalProxyValue, prefixLen + 1);
 			// swap parents and set new entry as parent to previous
 			newEntry->m_parent.swap(entry->m_parent);
 			entry->m_parent = newEntry;
 			// swap positions, new entry has to be in original entry position
 			entry.swap(newEntry);
 			// insert original entry to new entry to correct position in children array, which is now empty
-			auto index(getIndex(originalProxyValue.at(prefix.size())));
+			auto index(getIndex(originalProxyValue.at(prefixLen)));
 			entry->m_children[index].swap(newEntry);
 			entry->m_childrenCount++;
 
@@ -277,7 +279,7 @@ namespace Cache {
 		}
 	}
 
-	CCache::CEntryPtr CCache::resolve(const CEntryPtr& entry, const string& name, size_t position) const
+	CCache::CEntryPtr CCache::resolve(const CEntryPtr& entry, const string& name, uint32_t position) const
 	{
 		auto nameLen((name.size() - position)); // lenght of the name from current position
 
@@ -286,17 +288,17 @@ namespace Cache {
 		}
 
 		if (entry->hasProxyValue()) {
-			auto prefix(move(commonPrefix(name.substr(position), entry->m_proxyValue)));
-			if (prefix.size() == entry->m_proxyValue.size())
+			auto prefixLen(commonPrefixLen(name, entry->m_proxyValue, position));
+			if (prefixLen == entry->m_proxyValue.size())
 			{
-				if (prefix.size() == nameLen)
+				if (prefixLen == nameLen)
 				{	// matched the whole name
 					return entry;
 				}
-				else // prefix.size() < nameLen
+				else // prefixLen < nameLen
 				{	// shift position by common prefix
-					position += prefix.size();
-					nameLen -= prefix.size();
+					position += prefixLen;
+					//nameLen -= prefixLen;
 				}
 			}
 			else
@@ -305,8 +307,7 @@ namespace Cache {
 			}
 		}
 
-		auto index(getIndex(name.at(position)));
-		const auto& child(entry->m_children[index]);
+		const auto& child(entry->m_children[getIndex(name.at(position))]);
 		if (!child)
 		{	//  name not found in the tree
 			return make_shared<CEntry>();
@@ -370,11 +371,11 @@ namespace Cache {
 		updateLinkedListOnRemove(entry);
 
 		// merge proxy values
-		size_t index(0);
+		uint32_t index{ 0 };
 		if (entry->hasParent()) {
 			index = getChildIndex(entry);
 
-			// remove entry if it's useless - IP is cleared, if there are no children, it's useless
+			// remove entry if it's useless - IP is already cleared, if there are no children, it's useless
 			if (!entry->hasChildren()) {
 				entry->m_parent->m_childrenCount--;
 				entry->m_parent->m_children[index].reset();
@@ -409,27 +410,25 @@ namespace Cache {
 		entry->m_rSibling.reset();
 	}
 
-	size_t CCache::getChildIndex(const CEntryPtr& entry) const noexcept
+	uint32_t CCache::getChildIndex(const CEntryPtr& entry) const noexcept
 	{
 		assert(entry->hasParent() && "ENTRY HAS TO HAVE PARENT");
 
-		size_t index(0);
-		for (const auto& child : entry->m_parent->m_children) {
-			if (child == entry) {
-				break;
-			}
+		uint32_t index{ 0 };
+		const auto& children(entry->m_parent->m_children);
+		while (index < children.size() && children[index] != entry) {
 			index++;
 		}
 		return index;
 	}
 
-	void CCache::mergeChild(CEntryPtr& entry, size_t index)
+	void CCache::mergeChild(CEntryPtr& entry, uint32_t index)
 	{
 		if (entry->m_childrenCount != 1 || entry->hasData()) {
 			return;
 		}
 
-		size_t chIndex(getFirstChildIndex(entry->m_children));
+		auto chIndex(getFirstChildIndex(entry->m_children));
 
 		{
 			// child proxy = current entry proxy + index letter + child proxy
@@ -451,13 +450,10 @@ namespace Cache {
 		}
 	}
 
-	size_t CCache::getFirstChildIndex(const ChildrenContainer& children) const noexcept
+	uint32_t CCache::getFirstChildIndex(const ChildrenContainer& children) const noexcept
 	{
-		size_t index(0);
-		for (const auto& child : children) {
-			if (child) {
-				break;
-			}
+		uint32_t index{ 0 };
+		while (index < children.size() && !children[index]) {
 			index++;
 		}
 		return index;
@@ -478,7 +474,7 @@ namespace Cache {
 		clog << setfill('-') << setw(80) << "-" << endl;
 	}
 
-	void CCache::dumpCache(const CCache::CEntryPtr& entry, string name, size_t level/* = 1*/) const
+	void CCache::dumpCache(const CCache::CEntryPtr& entry, string name, uint32_t level/* = 1*/) const
 	{
 		if (entry->hasProxyValue()) {
 			clog << setfill('\t') << setw(level) << "\t" << entry->m_proxyValue << endl;
@@ -491,7 +487,7 @@ namespace Cache {
 		}
 
 		level++;
-		size_t index = 0;
+		uint32_t index = 0;
 		for (const auto& child : entry->m_children) {
 			if (child) {
 				auto ch(getChar(index));

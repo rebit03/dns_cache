@@ -25,11 +25,11 @@ namespace Cache {
 		using CEntryPtr = std::shared_ptr<CEntry>;
 		using ChildrenContainer = std::vector<CEntryPtr>;
 	protected:
-		CEntryPtr& updateCache(CEntryPtr& entry, const std::string& name, size_t position, const std::string& data);
-		CEntryPtr& insertChild(const CEntryPtr& entry, const std::string& name, size_t position, const std::string& data);
-		CEntryPtr& splitEntry(CEntryPtr& entry, const std::string& name, size_t position, const std::string& data, const std::string& prefix);
+		CEntryPtr& updateCache(CEntryPtr& entry, const std::string& name, uint32_t position, const std::string& data);
+		CEntryPtr& insertChild(const CEntryPtr& entry, const std::string& name, uint32_t position, const std::string& data);
+		CEntryPtr& splitEntry(CEntryPtr& entry, const std::string& name, uint32_t position, const std::string& data, uint32_t prefixLen = 0);
 
-		CEntryPtr resolve(const CEntryPtr& entry, const std::string& name, size_t position) const;
+		CEntryPtr resolve(const CEntryPtr& entry, const std::string& name, uint32_t position) const;
 
 		void updateLinkedListOnAccess(const CEntryPtr& entry) noexcept;
 		void updateLinkedListOnRemove(const CEntryPtr& entry) noexcept;
@@ -37,14 +37,14 @@ namespace Cache {
 		void removeEntry(CEntryPtr entry);
 		void removeEntry(const std::string& name);
 		// merge the only one child in entry, entry has index index, entry is updated to the merged value
-		void mergeChild(CEntryPtr& entry, size_t index);
+		void mergeChild(CEntryPtr& entry, uint32_t index);
 
 		void getName(const CEntryPtr& entry, std::string& name) const; // gets the name from reverse traversing through the tree
-		size_t getChildIndex(const CEntryPtr& entry) const noexcept;
-		size_t getFirstChildIndex(const ChildrenContainer& children) const noexcept;
+		uint32_t getChildIndex(const CEntryPtr& entry) const noexcept;
+		uint32_t getFirstChildIndex(const ChildrenContainer& children) const noexcept;
 
 		void dump() const;
-		void dumpCache(const CEntryPtr& entry, std::string name, size_t level = 1) const;
+		void dumpCache(const CEntryPtr& entry, std::string name, uint32_t level = 1) const;
 		void dumpLinkedList() const;
 	protected:
 		std::shared_mutex	m_cacheMutex;	// access to the cache
@@ -68,22 +68,23 @@ namespace Cache {
 			inline bool hasChildren() const noexcept { return m_childrenCount != 0; }
 			inline bool isEmpty() const noexcept { return !(hasChildren() || hasProxyValue() || hasData()); };
 
-			void clearProxyValue() noexcept { m_proxyValue.clear(); }
-			void setProxyValue(const std::string& str) { m_proxyValue.assign(str); }
-			void setProxyValue(std::string&& str) { m_proxyValue.swap(str); }
+			inline void clearProxyValue() noexcept { m_proxyValue.clear(); }
+			inline void setProxyValue(const std::string& str) { m_proxyValue.assign(str); }
+			inline void setProxyValue(const std::string& str, uint32_t pos, size_t count = std::string::npos) { m_proxyValue.assign(str, pos, count); }
+			inline void setProxyValue(std::string&& str) { m_proxyValue.swap(str); }
 
-			void clearData() noexcept { m_data.clear(); }
-			void setData(const std::string& data) { m_data.assign(data); }
-			void setData(std::string&& data) noexcept { m_data.swap(data); }
+			inline void clearData() noexcept { m_data.clear(); }
+			inline void setData(const std::string& data) { m_data.assign(data); }
+			inline void setData(std::string&& data) noexcept { m_data.swap(data); }
 		protected:
-			static const size_t ALPHABET_SIZE = 38;	// [a-z][0-9][-.]
+			static const uint32_t ALPHABET_SIZE = 38;	// [a-z][0-9][-.]
 		public:
 			CEntryPtr			m_parent;
 			CEntryPtr			m_lSibling;
 			CEntryPtr			m_rSibling;
 			std::string			m_proxyValue;
 			std::string			m_data;
-			size_t				m_childrenCount{ 0 };
+			uint32_t			m_childrenCount{ 0 };
 			ChildrenContainer	m_children{ ALPHABET_SIZE };
 		};
 	};
