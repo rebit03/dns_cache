@@ -147,7 +147,7 @@ namespace Cache {
 			else if (!(entry->hasData() || entry->hasChildren())) {
 				// 5. empty entry -> set data
 				try {
-					entry->setProxyValue(name.substr(position));
+					entry->setProxyValue(name, position);
 					entry->setData(data);
 					return entry;
 				}
@@ -178,7 +178,11 @@ namespace Cache {
 			if (!child) {
 				child = make_shared<CEntry>();
 				child->m_parent = entry;
+				child->m_index = index;
 				entry->m_childrenCount++;
+				if (index < entry->m_firstChildIndex) {
+					entry->m_firstChildIndex = index;
+				}
 			}
 
 			auto nameLen(static_cast<uint32_t>(name.size() - position)); // lenght of the name from current position
@@ -197,6 +201,9 @@ namespace Cache {
 			{	// revert state
 				child.reset();
 				entry->m_childrenCount--;
+				if (entry->m_firstChildIndex == index) {
+					entry->m_firstChildIndex = static_cast<uint8_t>(getFirstChildIndex(entry->m_children, index));
+				}
 			}
 			// TODO: throw custom exception
 			throw;
@@ -227,6 +234,10 @@ namespace Cache {
 			auto index(getIndex(originalProxyValue.at(prefixLen)));
 			entry->m_children[index].swap(newEntry);
 			entry->m_childrenCount++;
+			// update child info
+			entry->m_index = entry->m_children[index]->m_index;
+			entry->m_firstChildIndex = index;
+			entry->m_children[index]->m_index = index;
 
 			if (nameLen == 0)
 			{	// nothing to index anymore -> return the newly created entry as it contains inserted data
@@ -244,6 +255,8 @@ namespace Cache {
 					entry.swap(newEntry->m_children[index]);
 					// set its original parent
 					entry->m_parent.swap(newEntry->m_parent);
+					// set its original index
+					entry->m_index = newEntry->m_index;
 					// set its original proxy value
 					entry->m_proxyValue.swap(originalProxyValue);
 					//cerr << "failed to update " << name << " to " << data << ": " << e.what() << endl;
@@ -371,23 +384,21 @@ namespace Cache {
 		updateLinkedListOnRemove(entry);
 
 		// merge proxy values
-		uint32_t index{ 0 };
-		if (entry->hasParent()) {
-			index = getChildIndex(entry);
-
-			// remove entry if it's useless - IP is already cleared, if there are no children, it's useless
-			if (!entry->hasChildren()) {
-				entry->m_parent->m_childrenCount--;
-				entry->m_parent->m_children[index].reset();
-				entry = entry->m_parent;
-
-				if (entry->hasParent()) {
-					index = getChildIndex(entry);
-				}
+		if (entry->hasParent() && !entry->hasChildren())
+		{	// remove entry if it's useless - IP is already cleared, if there are no children, it's useless
+			auto index(entry->m_index);
+			entry = entry->m_parent;
+			entry->m_childrenCount--;
+			entry->m_children[index].reset();
+			if (entry->m_childrenCount == 0) {
+				entry->m_firstChildIndex = UINT8_MAX;
+			}
+			else if (entry->m_firstChildIndex == index) {
+				entry->m_firstChildIndex = static_cast<uint8_t>(getFirstChildIndex(entry->m_children, index));
 			}
 		}
 
-		mergeChild(entry, index);
+		mergeChild(entry);
 	}
 
 	void CCache::updateLinkedListOnRemove(const CEntryPtr& entry) noexcept
@@ -410,29 +421,18 @@ namespace Cache {
 		entry->m_rSibling.reset();
 	}
 
-	uint32_t CCache::getChildIndex(const CEntryPtr& entry) const noexcept
-	{
-		assert(entry->hasParent() && "ENTRY HAS TO HAVE PARENT");
-
-		uint32_t index{ 0 };
-		const auto& children(entry->m_parent->m_children);
-		while (index < children.size() && children[index] != entry) {
-			index++;
-		}
-		return index;
-	}
-
-	void CCache::mergeChild(CEntryPtr& entry, uint32_t index)
+	void CCache::mergeChild(CEntryPtr& entry)
 	{
 		if (entry->m_childrenCount != 1 || entry->hasData()) {
 			return;
 		}
 
-		auto chIndex(getFirstChildIndex(entry->m_children));
+		auto chIndex(entry->m_firstChildIndex);
 
 		{
 			// child proxy = current entry proxy + index letter + child proxy
 			string proxy(move(entry->m_proxyValue));
+			// TODO: can throw
 			proxy += getChar(chIndex);
 			proxy += entry->m_children[chIndex]->m_proxyValue;
 
@@ -440,23 +440,23 @@ namespace Cache {
 		}
 
 		entry->m_children[chIndex]->m_parent = entry->m_parent;
+		entry->m_children[chIndex]->m_index = entry->m_index;
 		if (entry->hasParent()) {
-			entry->m_parent->m_children[index].swap(entry->m_children[chIndex]);
-			entry = entry->m_parent->m_children[index];
+			entry->m_parent->m_children[entry->m_index].swap(entry->m_children[chIndex]);
+			//entry = entry->m_parent->m_children[index];
 		}
 		else {
 			m_root.swap(entry->m_children[chIndex]);
-			entry = m_root;
+			//entry = m_root;
 		}
 	}
 
-	uint32_t CCache::getFirstChildIndex(const ChildrenContainer& children) const noexcept
+	uint32_t CCache::getFirstChildIndex(const ChildrenContainer& children, uint32_t pos/* = 0*/) const noexcept
 	{
-		uint32_t index{ 0 };
-		while (index < children.size() && !children[index]) {
-			index++;
+		while (pos < children.size() && !children[pos]) {
+			pos++;
 		}
-		return index;
+		return pos;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -519,7 +519,7 @@ namespace Cache {
 			getName(entry->m_parent, name);
 
 			// index letter
-			name.push_back(getChar(getChildIndex(entry)));
+			name.push_back(getChar(entry->m_index));
 		}
 		if (entry->hasProxyValue()) {
 			name.append(entry->m_proxyValue);

@@ -36,12 +36,11 @@ namespace Cache {
 
 		void removeEntry(CEntryPtr entry);
 		void removeEntry(const std::string& name);
-		// merge the only one child in entry, entry has index index, entry is updated to the merged value
-		void mergeChild(CEntryPtr& entry, uint32_t index);
+		// merge the only one child in entry, entry has index index[, entry is updated to the merged value]
+		void mergeChild(CEntryPtr& entry);
 
 		void getName(const CEntryPtr& entry, std::string& name) const; // gets the name from reverse traversing through the tree
-		uint32_t getChildIndex(const CEntryPtr& entry) const noexcept;
-		uint32_t getFirstChildIndex(const ChildrenContainer& children) const noexcept;
+		uint32_t getFirstChildIndex(const ChildrenContainer& children, uint32_t pos = 0) const noexcept;
 
 		void dump() const;
 		void dumpCache(const CEntryPtr& entry, std::string name, uint32_t level = 1) const;
@@ -55,6 +54,7 @@ namespace Cache {
 		CEntryPtr			m_head;
 		CEntryPtr			m_tail;
 	protected:
+#pragma pack(push, 1)
 		struct CEntry {
 		public:
 			explicit CEntry() {}
@@ -84,10 +84,12 @@ namespace Cache {
 			CEntryPtr			m_rSibling;
 			std::string			m_proxyValue;
 			std::string			m_data;
-			uint32_t			m_childrenCount{ 0 };
 			ChildrenContainer	m_children{ ALPHABET_SIZE };
+			uint8_t				m_childrenCount{ 0 };
+			uint8_t				m_firstChildIndex{ UINT8_MAX };
+			uint8_t				m_index{ 0 };
 		};
+#pragma pack(pop)
 	};
 
 }
-
